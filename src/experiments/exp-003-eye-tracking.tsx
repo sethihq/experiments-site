@@ -364,6 +364,8 @@ export default function EyeTrackingShader() {
   const targetRegionRef = useRef<EyeRegion>(defaultRegion);
   const [faceDetected, setFaceDetected] = useState(false);
   const noDetectionCountRef = useRef(0);
+  const isDetectingRef = useRef(false);
+  const faceapiRef = useRef<any>(null);
 
   const initWebGL = useCallback(() => {
     const canvas = canvasRef.current;
@@ -443,6 +445,82 @@ export default function EyeTrackingShader() {
     return gl;
   }, []);
 
+  // Detection loop - extracted to prevent closure issues
+  const runDetectionLoop = useCallback(() => {
+    const detectFace = async () => {
+      const faceapi = faceapiRef.current;
+      if (!faceapi || !videoRef.current || videoRef.current.readyState !== 4) {
+        detectionIntervalRef.current = setTimeout(detectFace, 100);
+        return;
+      }
+
+      // Prevent overlapping detections
+      if (isDetectingRef.current) {
+        detectionIntervalRef.current = setTimeout(detectFace, 50);
+        return;
+      }
+
+      isDetectingRef.current = true;
+
+      try {
+        const detections = await faceapi
+          .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions({
+            inputSize: 256,
+            scoreThreshold: 0.3
+          }))
+          .withFaceLandmarks(true);
+
+        if (detections) {
+          noDetectionCountRef.current = 0;
+          setFaceDetected(true);
+
+          const landmarks = detections.landmarks;
+          const leftEye = landmarks.getLeftEye();
+          const rightEye = landmarks.getRightEye();
+
+          const allPoints = [...leftEye, ...rightEye];
+          const minX = Math.min(...allPoints.map((p: any) => p.x));
+          const maxX = Math.max(...allPoints.map((p: any) => p.x));
+          const minY = Math.min(...allPoints.map((p: any) => p.y));
+          const maxY = Math.max(...allPoints.map((p: any) => p.y));
+
+          const videoWidth = videoRef.current.videoWidth;
+          const videoHeight = videoRef.current.videoHeight;
+
+          const eyeWidth = maxX - minX;
+          const eyeHeight = maxY - minY;
+          const padX = eyeWidth * 0.5;
+          const padY = eyeHeight * 0.8;
+
+          const regionWidth = (eyeWidth + padX * 2) / videoWidth;
+          const regionHeight = (eyeHeight + padY * 2) / videoHeight;
+          const regionX = (minX - padX) / videoWidth;
+          const regionY = (minY - padY) / videoHeight;
+
+          targetRegionRef.current = {
+            x: Math.max(0, Math.min(1 - regionWidth, regionX)),
+            y: Math.max(0, Math.min(1 - regionHeight, regionY)),
+            width: Math.min(1, Math.max(0.1, regionWidth)),
+            height: Math.min(1, Math.max(0.05, regionHeight)),
+          };
+        } else {
+          noDetectionCountRef.current++;
+          if (noDetectionCountRef.current > 20) {
+            setFaceDetected(false);
+          }
+        }
+      } catch (err) {
+        console.error("Detection error:", err);
+      }
+
+      isDetectingRef.current = false;
+      // Run detection every 100ms (less aggressive, more stable)
+      detectionIntervalRef.current = setTimeout(detectFace, 100);
+    };
+
+    detectFace();
+  }, []);
+
   const startCamera = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -476,72 +554,11 @@ export default function EyeTrackingShader() {
       ]);
 
       faceApiLoadedRef.current = true;
+      faceapiRef.current = faceapi;
       setIsLoading(false);
 
-      // Detection loop - runs frequently for responsive tracking
-      const detectFace = async () => {
-        if (!videoRef.current || videoRef.current.readyState !== 4) {
-          detectionIntervalRef.current = setTimeout(detectFace, 30);
-          return;
-        }
-
-        try {
-          const detections = await faceapi
-            .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions({
-              inputSize: 320,
-              scoreThreshold: 0.25
-            }))
-            .withFaceLandmarks(true);
-
-          if (detections) {
-            noDetectionCountRef.current = 0;
-            setFaceDetected(true);
-
-            const landmarks = detections.landmarks;
-            const leftEye = landmarks.getLeftEye();
-            const rightEye = landmarks.getRightEye();
-
-            const allPoints = [...leftEye, ...rightEye];
-            const minX = Math.min(...allPoints.map(p => p.x));
-            const maxX = Math.max(...allPoints.map(p => p.x));
-            const minY = Math.min(...allPoints.map(p => p.y));
-            const maxY = Math.max(...allPoints.map(p => p.y));
-
-            const videoWidth = videoRef.current.videoWidth;
-            const videoHeight = videoRef.current.videoHeight;
-
-            // Calculate eye region with padding for better framing
-            const eyeWidth = maxX - minX;
-            const eyeHeight = maxY - minY;
-            const padX = eyeWidth * 0.5;
-            const padY = eyeHeight * 0.8;
-
-            const regionWidth = (eyeWidth + padX * 2) / videoWidth;
-            const regionHeight = (eyeHeight + padY * 2) / videoHeight;
-            const regionX = (minX - padX) / videoWidth;
-            const regionY = (minY - padY) / videoHeight;
-
-            // Set target region (coordinates match shader UV space)
-            targetRegionRef.current = {
-              x: Math.max(0, Math.min(1 - regionWidth, regionX)),
-              y: Math.max(0, Math.min(1 - regionHeight, regionY)),
-              width: Math.min(1, Math.max(0.1, regionWidth)),
-              height: Math.min(1, Math.max(0.05, regionHeight)),
-            };
-          } else {
-            noDetectionCountRef.current++;
-            if (noDetectionCountRef.current > 30) {
-              setFaceDetected(false);
-            }
-          }
-        } catch (err) {
-          console.error("Detection error:", err);
-        }
-
-        detectionIntervalRef.current = setTimeout(detectFace, 30);
-      };
-
-      detectFace();
+      // Start detection loop
+      runDetectionLoop();
     } catch (err) {
       console.error("Face detection failed:", err);
       setIsLoading(false);
