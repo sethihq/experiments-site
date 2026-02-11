@@ -555,9 +555,9 @@ export default function DoctorStrangePortal() {
     return gl;
   }, []);
 
-  // Check if finger path forms a circle
+  // Check if finger path forms a circle - very lenient detection
   const detectCircularGesture = useCallback((path: PathPoint[]) => {
-    if (path.length < 20) return null;
+    if (path.length < 15) return null; // Reduced from 20
 
     let centerX = 0, centerY = 0;
     path.forEach(p => {
@@ -585,8 +585,8 @@ export default function DoctorStrangePortal() {
       Math.pow(path[0].y - path[path.length - 1].y, 2)
     );
 
-    // More lenient circle detection
-    const isCircular = radiusVariance < 0.015 && startEnd < avgRadius * 0.6 && avgRadius > 0.04;
+    // Very lenient circle detection
+    const isCircular = radiusVariance < 0.025 && startEnd < avgRadius * 0.8 && avgRadius > 0.03;
 
     if (isCircular) {
       return { x: centerX, y: centerY, radius: avgRadius };
@@ -697,51 +697,22 @@ export default function DoctorStrangePortal() {
 
           // Get finger landmarks for gesture detection
           const indexTip = landmarks[8];
-          const indexPip = landmarks[6];
-          const indexMcp = landmarks[5];
           const middleTip = landmarks[12];
-          const middlePip = landmarks[10];
-          const middleMcp = landmarks[9];
-          const ringTip = landmarks[16];
-          const ringMcp = landmarks[13];
-          const pinkyTip = landmarks[20];
-          const pinkyMcp = landmarks[17];
 
-          // Distance-based gesture detection (works regardless of hand orientation)
-          // Index finger extended = tip is far from MCP (base)
+          // Simple gesture detection - just check if index finger is extended
+          // Index finger extended = tip is far from palm (wrist)
+          const wrist = landmarks[0];
           const indexLength = Math.sqrt(
-            Math.pow(indexTip.x - indexMcp.x, 2) +
-            Math.pow(indexTip.y - indexMcp.y, 2) +
-            Math.pow((indexTip.z || 0) - (indexMcp.z || 0), 2)
+            Math.pow(indexTip.x - wrist.x, 2) +
+            Math.pow(indexTip.y - wrist.y, 2)
           );
-          const indexPipToMcp = Math.sqrt(
-            Math.pow(indexPip.x - indexMcp.x, 2) +
-            Math.pow(indexPip.y - indexMcp.y, 2)
-          );
-          const indexExtended = indexLength > indexPipToMcp * 1.4;
-
-          // Other fingers curled = tips close to their MCPs (distance-based)
           const middleLength = Math.sqrt(
-            Math.pow(middleTip.x - middleMcp.x, 2) +
-            Math.pow(middleTip.y - middleMcp.y, 2)
-          );
-          const ringLength = Math.sqrt(
-            Math.pow(ringTip.x - ringMcp.x, 2) +
-            Math.pow(ringTip.y - ringMcp.y, 2)
-          );
-          const pinkyLength = Math.sqrt(
-            Math.pow(pinkyTip.x - pinkyMcp.x, 2) +
-            Math.pow(pinkyTip.y - pinkyMcp.y, 2)
+            Math.pow(middleTip.x - wrist.x, 2) +
+            Math.pow(middleTip.y - wrist.y, 2)
           );
 
-          // Curled if tip-to-mcp distance is less than index (normalized comparison)
-          const middleCurled = middleLength < indexLength * 0.7;
-          const ringCurled = ringLength < indexLength * 0.7;
-          const pinkyCurled = pinkyLength < indexLength * 0.7;
-
-          // Pointing gesture = index extended, at least 2 others curled (more lenient)
-          const curledCount = (middleCurled ? 1 : 0) + (ringCurled ? 1 : 0) + (pinkyCurled ? 1 : 0);
-          const isPointingGesture = indexExtended && curledCount >= 2;
+          // Pointing = index finger is the furthest from wrist (or close to it)
+          const isPointingGesture = indexLength > 0.15 && indexLength >= middleLength * 0.85;
 
           // Multi-frame confirmation to avoid false positives
           if (isPointingGesture && !portalRef.current) {
