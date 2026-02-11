@@ -37,9 +37,9 @@ interface PathPoint {
   time: number;
 }
 
-// Position smoothing for accurate finger tracking
-const SMOOTHING_FACTOR = 0.4;
-const POSITION_HISTORY_SIZE = 8;
+// Position smoothing - minimal for precise 1:1 tracking
+const SMOOTHING_FACTOR = 0.85; // High = more responsive, closer to raw position
+const POSITION_HISTORY_SIZE = 3; // Small history for minimal lag
 
 interface SmoothedPosition {
   x: number;
@@ -50,24 +50,10 @@ interface SmoothedPosition {
 function smoothPosition(current: SmoothedPosition, newX: number, newY: number): SmoothedPosition {
   const history = [...current.history, { x: newX, y: newY }].slice(-POSITION_HISTORY_SIZE);
 
-  // Weighted average (recent points have higher weight)
-  let weightSum = 0;
-  let xSum = 0;
-  let ySum = 0;
-
-  for (let i = 0; i < history.length; i++) {
-    const weight = (i + 1) * (i + 1); // Quadratic weights for responsiveness
-    weightSum += weight;
-    xSum += history[i].x * weight;
-    ySum += history[i].y * weight;
-  }
-
-  const avgX = xSum / weightSum;
-  const avgY = ySum / weightSum;
-
-  // Exponential smoothing
-  const smoothedX = current.x * (1 - SMOOTHING_FACTOR) + avgX * SMOOTHING_FACTOR;
-  const smoothedY = current.y * (1 - SMOOTHING_FACTOR) + avgY * SMOOTHING_FACTOR;
+  // Simple exponential smoothing for minimal lag
+  // Directly blend current position with new position
+  const smoothedX = current.x * (1 - SMOOTHING_FACTOR) + newX * SMOOTHING_FACTOR;
+  const smoothedY = current.y * (1 - SMOOTHING_FACTOR) + newY * SMOOTHING_FACTOR;
 
   return { x: smoothedX, y: smoothedY, history };
 }
@@ -450,6 +436,7 @@ export default function DoctorStrangePortal() {
   const [error, setError] = useState<string | null>(null);
   const [currentLocation, setCurrentLocation] = useState<string>("");
   const [showInstructions, setShowInstructions] = useState(true);
+  const [fingerPos, setFingerPos] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
 
   // Gesture tracking refs
   const handPositionsRef = useRef<HandLandmark[]>([]);
@@ -712,22 +699,31 @@ export default function DoctorStrangePortal() {
           // Always track index finger when not snapping
           const isPointingGesture = !isSnapping;
 
-          // Multi-frame confirmation to avoid false positives
+          // Immediate tracking - no confirmation delay for precise response
           if (isPointingGesture && !portalRef.current) {
             drawingConfirmFramesRef.current++;
             notDrawingConfirmFramesRef.current = 0;
 
-            // Start drawing after 2 frames of confirmed gesture
-            if (drawingConfirmFramesRef.current >= 2) {
+            // Start drawing immediately (1 frame)
+            if (drawingConfirmFramesRef.current >= 1) {
               isDrawingRef.current = true;
 
-              // Smooth the finger position for accurate tracking
-              const rawX = indexTip.x; // No mirror - shader handles it
+              // Direct finger position with minimal smoothing
+              const rawX = indexTip.x;
               const rawY = indexTip.y;
+
+              // Initialize smoothed position to current if starting fresh
+              if (smoothedFingerRef.current.history.length === 0) {
+                smoothedFingerRef.current = { x: rawX, y: rawY, history: [{ x: rawX, y: rawY }] };
+              }
+
               smoothedFingerRef.current = smoothPosition(smoothedFingerRef.current, rawX, rawY);
 
               const smoothX = smoothedFingerRef.current.x;
               const smoothY = smoothedFingerRef.current.y;
+
+              // Update visual finger indicator (mirrored for display)
+              setFingerPos({ x: 1 - smoothX, y: smoothY, visible: true });
 
               const now = Date.now();
 
@@ -760,14 +756,15 @@ export default function DoctorStrangePortal() {
             notDrawingConfirmFramesRef.current++;
             drawingConfirmFramesRef.current = 0;
 
-            // Stop drawing after 10 frames of not pointing (more tolerance for hand rotation)
-            if (notDrawingConfirmFramesRef.current >= 10) {
+            // Stop drawing after 5 frames (quick response but tolerant of brief gestures)
+            if (notDrawingConfirmFramesRef.current >= 5) {
               // Fade out path gradually
               if (fingerPathRef.current.length > 0) {
-                fingerPathRef.current = fingerPathRef.current.slice(1);
+                fingerPathRef.current = fingerPathRef.current.slice(2);
               }
               if (fingerPathRef.current.length === 0) {
                 isDrawingRef.current = false;
+                setFingerPos(prev => ({ ...prev, visible: false }));
                 // Reset smoothing when starting fresh
                 smoothedFingerRef.current = { x: 0.5, y: 0.5, history: [] };
               }
@@ -789,6 +786,7 @@ export default function DoctorStrangePortal() {
             }
             if (fingerPathRef.current.length === 0) {
               isDrawingRef.current = false;
+              setFingerPos(prev => ({ ...prev, visible: false }));
               smoothedFingerRef.current = { x: 0.5, y: 0.5, history: [] };
             }
           }
@@ -946,39 +944,43 @@ export default function DoctorStrangePortal() {
 
       {/* Start Screen */}
       {!cameraActive && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 p-8 bg-black/90">
-          <div className="text-center space-y-4">
-            <h1 className="text-2xl font-light text-orange-400">Sling Ring Portal</h1>
-            <p className="text-sm text-white/50 max-w-sm">
-              Point your index finger and draw a circle in the air
-              to open a portal to a random location around the world.
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-8 p-8 bg-gradient-to-b from-black via-black/95 to-orange-950/20">
+          <div className="text-center space-y-3">
+            <h1 className="text-3xl font-light text-white tracking-wide">Sling Ring Portal</h1>
+            <p className="text-sm text-white/40 max-w-md leading-relaxed">
+              Draw a circle with your finger to open a mystical portal
             </p>
           </div>
 
           <button
             onClick={startCamera}
             disabled={isLoading}
-            className="px-8 py-3 bg-orange-500/20 hover:bg-orange-500/30 border border-orange-500/40 rounded-lg text-orange-300 transition-all duration-200 disabled:opacity-50"
+            className="px-10 py-4 bg-gradient-to-r from-orange-600/80 to-amber-500/80 hover:from-orange-500 hover:to-amber-400 rounded-full text-white font-medium tracking-wide transition-all duration-300 disabled:opacity-50 shadow-lg shadow-orange-500/25 hover:shadow-orange-500/40 hover:scale-105 focus:outline-none"
           >
             {isLoading ? "Loading..." : "Enable Camera"}
           </button>
 
           {error && <p className="text-red-400 text-sm">{error}</p>}
 
-          <div className="text-xs text-white/30 space-y-1 text-center mt-4">
-            <p>☝️ Point index finger → Draw circle</p>
-            <p>✊ Make fist in portal → Close it</p>
-            <p>Spacebar → Quick toggle</p>
+          <div className="flex gap-8 text-xs text-white/30 mt-4">
+            <div className="flex items-center gap-2">
+              <span className="text-base">☝️</span>
+              <span>Draw circle</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-base">🤌</span>
+              <span>Snap to close</span>
+            </div>
           </div>
         </div>
       )}
 
       {/* Loading Overlay */}
       {isLoading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/80 z-10">
+        <div className="absolute inset-0 flex items-center justify-center bg-black/90 z-10">
           <div className="text-center space-y-4">
-            <div className="w-8 h-8 border-2 border-orange-500/20 border-t-orange-500 rounded-full animate-spin mx-auto" />
-            <p className="text-orange-300/60 text-sm">Loading hand tracking...</p>
+            <div className="w-10 h-10 border-2 border-white/10 border-t-orange-400 rounded-full animate-spin mx-auto" />
+            <p className="text-white/40 text-sm">Initializing hand tracking...</p>
           </div>
         </div>
       )}
@@ -986,21 +988,36 @@ export default function DoctorStrangePortal() {
       {/* Instructions */}
       {cameraActive && showInstructions && !portalRef.current && (
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-10">
-          <div className="text-center space-y-4 animate-pulse">
-            <div className="w-24 h-24 mx-auto border-2 border-dashed border-orange-500/40 rounded-full flex items-center justify-center">
-              <span className="text-4xl">☝️</span>
+          <div className="text-center space-y-3">
+            <div className="w-28 h-28 mx-auto border border-dashed border-white/20 rounded-full flex items-center justify-center animate-pulse">
+              <span className="text-5xl opacity-80">☝️</span>
             </div>
-            <p className="text-orange-400/80 text-sm">Draw a circle to open portal</p>
+            <p className="text-white/50 text-sm font-light">Draw a circle to open portal</p>
           </div>
+        </div>
+      )}
+
+      {/* Finger Position Indicator */}
+      {fingerPos.visible && cameraActive && (
+        <div
+          className="absolute w-4 h-4 pointer-events-none z-20"
+          style={{
+            left: `${fingerPos.x * 100}%`,
+            top: `${fingerPos.y * 100}%`,
+            transform: 'translate(-50%, -50%)',
+          }}
+        >
+          <div className="absolute inset-0 rounded-full bg-white/80 shadow-lg shadow-orange-400/60" />
+          <div className="absolute -inset-1 rounded-full bg-orange-400/40 animate-ping" />
         </div>
       )}
 
       {/* Location Display */}
       {currentLocation && (
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-10">
-          <div className="px-6 py-2 bg-black/50 backdrop-blur-sm border border-orange-500/20 rounded-full">
-            <span className="text-orange-300 font-mono text-sm tracking-wider">
-              📍 {currentLocation}
+          <div className="px-5 py-2.5 bg-black/60 backdrop-blur-md rounded-full">
+            <span className="text-white/80 text-sm tracking-wide">
+              {currentLocation}
             </span>
           </div>
         </div>

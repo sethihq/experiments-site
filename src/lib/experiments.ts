@@ -19,7 +19,6 @@ export const experiments: Experiment[] = [
     tags: ["WebGL", "Camera", "Tweakpane"],
     href: "/exp/1",
     year: "2026",
-    isNew: true,
     previewColor: "#0a0a0a",
   },
   {
@@ -30,7 +29,6 @@ export const experiments: Experiment[] = [
     tags: ["Three.js", "ASCII", "Retro"],
     href: "/exp/2",
     year: "2026",
-    isNew: true,
     previewColor: "#0a0a0f",
   },
   {
@@ -41,7 +39,6 @@ export const experiments: Experiment[] = [
     tags: ["WebGL", "Camera", "AI", "Face Detection"],
     href: "/exp/3",
     year: "2026",
-    isNew: true,
     previewColor: "#0d0d12",
   },
   {
@@ -52,7 +49,6 @@ export const experiments: Experiment[] = [
     tags: ["WebGL", "Camera", "AI", "Audio", "Face Detection"],
     href: "/exp/4",
     year: "2026",
-    isNew: true,
     previewColor: "#050508",
   },
   {
@@ -63,7 +59,6 @@ export const experiments: Experiment[] = [
     tags: ["Three.js", "Camera", "AI", "Hand Tracking", "AR", "3D"],
     href: "/exp/5",
     year: "2026",
-    isNew: true,
     previewColor: "#050505",
   },
   {
