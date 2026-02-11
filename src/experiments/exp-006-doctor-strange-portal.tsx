@@ -685,9 +685,9 @@ export default function DoctorStrangePortal() {
 
       hands.setOptions({
         maxNumHands: 1,
-        modelComplexity: 1, // Highest accuracy
-        minDetectionConfidence: 0.8, // Higher confidence
-        minTrackingConfidence: 0.8,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.5, // Lower for better tracking
+        minTrackingConfidence: 0.5,
       });
 
       hands.onResults((results: any) => {
@@ -696,23 +696,21 @@ export default function DoctorStrangePortal() {
           handPositionsRef.current = landmarks;
 
           // Get finger landmarks for gesture detection
+          const thumbTip = landmarks[4];
           const indexTip = landmarks[8];
           const middleTip = landmarks[12];
 
-          // Simple gesture detection - just check if index finger is extended
-          // Index finger extended = tip is far from palm (wrist)
-          const wrist = landmarks[0];
-          const indexLength = Math.sqrt(
-            Math.pow(indexTip.x - wrist.x, 2) +
-            Math.pow(indexTip.y - wrist.y, 2)
-          );
-          const middleLength = Math.sqrt(
-            Math.pow(middleTip.x - wrist.x, 2) +
-            Math.pow(middleTip.y - wrist.y, 2)
+          // Calculate snap distance (thumb to middle finger - like a finger snap)
+          const snapDist = Math.sqrt(
+            Math.pow(thumbTip.x - middleTip.x, 2) +
+            Math.pow(thumbTip.y - middleTip.y, 2)
           );
 
-          // Pointing = index finger is the furthest from wrist (or close to it)
-          const isPointingGesture = indexLength > 0.15 && indexLength >= middleLength * 0.85;
+          // Snapping = thumb and middle finger tips are close together
+          const isSnapping = snapDist < 0.06;
+
+          // Always track index finger when not snapping
+          const isPointingGesture = !isSnapping;
 
           // Multi-frame confirmation to avoid false positives
           if (isPointingGesture && !portalRef.current) {
@@ -724,7 +722,7 @@ export default function DoctorStrangePortal() {
               isDrawingRef.current = true;
 
               // Smooth the finger position for accurate tracking
-              const rawX = 1 - indexTip.x; // Mirrored
+              const rawX = indexTip.x; // No mirror - shader handles it
               const rawY = indexTip.y;
               smoothedFingerRef.current = smoothPosition(smoothedFingerRef.current, rawX, rawY);
 
@@ -776,23 +774,9 @@ export default function DoctorStrangePortal() {
             }
           }
 
-          // Check for closing gesture (fist near portal)
-          if (portalRef.current && !portalRef.current.closing) {
-            const palmBase = landmarks[0];
-            const middleTipPoint = landmarks[12];
-            const fistDist = Math.sqrt(
-              Math.pow(palmBase.x - middleTipPoint.x, 2) +
-              Math.pow(palmBase.y - middleTipPoint.y, 2)
-            );
-
-            const portalDist = Math.sqrt(
-              Math.pow(1 - palmBase.x - portalRef.current.x, 2) +
-              Math.pow(palmBase.y - portalRef.current.y, 2)
-            );
-
-            if (fistDist < 0.1 && portalDist < portalRef.current.radius) {
-              closePortal();
-            }
+          // Check for closing gesture (finger snap - thumb + middle finger)
+          if (portalRef.current && !portalRef.current.closing && isSnapping) {
+            closePortal();
           }
         } else {
           // No hand detected - fade out path
