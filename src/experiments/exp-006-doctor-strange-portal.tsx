@@ -707,17 +707,41 @@ export default function DoctorStrangePortal() {
           const pinkyTip = landmarks[20];
           const pinkyMcp = landmarks[17];
 
-          // Better gesture detection using 3D positions
-          // Index finger should be extended (tip above PIP above MCP in y, considering hand orientation)
-          const indexExtended = indexTip.y < indexPip.y - 0.02 && indexPip.y < indexMcp.y;
+          // Distance-based gesture detection (works regardless of hand orientation)
+          // Index finger extended = tip is far from MCP (base)
+          const indexLength = Math.sqrt(
+            Math.pow(indexTip.x - indexMcp.x, 2) +
+            Math.pow(indexTip.y - indexMcp.y, 2) +
+            Math.pow((indexTip.z || 0) - (indexMcp.z || 0), 2)
+          );
+          const indexPipToMcp = Math.sqrt(
+            Math.pow(indexPip.x - indexMcp.x, 2) +
+            Math.pow(indexPip.y - indexMcp.y, 2)
+          );
+          const indexExtended = indexLength > indexPipToMcp * 1.4;
 
-          // Other fingers should be curled (tips below or close to PIPs)
-          const middleCurled = middleTip.y > middlePip.y - 0.02;
-          const ringCurled = ringTip.y > ringMcp.y - 0.04;
-          const pinkyCurled = pinkyTip.y > pinkyMcp.y - 0.04;
+          // Other fingers curled = tips close to their MCPs (distance-based)
+          const middleLength = Math.sqrt(
+            Math.pow(middleTip.x - middleMcp.x, 2) +
+            Math.pow(middleTip.y - middleMcp.y, 2)
+          );
+          const ringLength = Math.sqrt(
+            Math.pow(ringTip.x - ringMcp.x, 2) +
+            Math.pow(ringTip.y - ringMcp.y, 2)
+          );
+          const pinkyLength = Math.sqrt(
+            Math.pow(pinkyTip.x - pinkyMcp.x, 2) +
+            Math.pow(pinkyTip.y - pinkyMcp.y, 2)
+          );
 
-          // Strong pointing gesture = index extended, others curled
-          const isPointingGesture = indexExtended && middleCurled && ringCurled && pinkyCurled;
+          // Curled if tip-to-mcp distance is less than index (normalized comparison)
+          const middleCurled = middleLength < indexLength * 0.7;
+          const ringCurled = ringLength < indexLength * 0.7;
+          const pinkyCurled = pinkyLength < indexLength * 0.7;
+
+          // Pointing gesture = index extended, at least 2 others curled (more lenient)
+          const curledCount = (middleCurled ? 1 : 0) + (ringCurled ? 1 : 0) + (pinkyCurled ? 1 : 0);
+          const isPointingGesture = indexExtended && curledCount >= 2;
 
           // Multi-frame confirmation to avoid false positives
           if (isPointingGesture && !portalRef.current) {
@@ -745,14 +769,14 @@ export default function DoctorStrangePortal() {
                 time: now,
               });
 
-              // Keep last 3 seconds of path
+              // Keep last 5 seconds of path (more time to complete circle)
               fingerPathRef.current = fingerPathRef.current.filter(
-                (p) => now - p.time < 3000
+                (p) => now - p.time < 5000
               );
 
-              // Limit path length for shader
-              if (fingerPathRef.current.length > 64) {
-                fingerPathRef.current = fingerPathRef.current.slice(-64);
+              // Limit path length for shader (increased for larger circles)
+              if (fingerPathRef.current.length > 80) {
+                fingerPathRef.current = fingerPathRef.current.slice(-80);
               }
 
               // Check for circle when enough points collected
@@ -767,8 +791,8 @@ export default function DoctorStrangePortal() {
             notDrawingConfirmFramesRef.current++;
             drawingConfirmFramesRef.current = 0;
 
-            // Stop drawing after 3 frames of not pointing
-            if (notDrawingConfirmFramesRef.current >= 3) {
+            // Stop drawing after 10 frames of not pointing (more tolerance for hand rotation)
+            if (notDrawingConfirmFramesRef.current >= 10) {
               // Fade out path gradually
               if (fingerPathRef.current.length > 0) {
                 fingerPathRef.current = fingerPathRef.current.slice(1);
