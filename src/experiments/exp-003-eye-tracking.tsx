@@ -362,6 +362,8 @@ export default function EyeTrackingShader() {
   const defaultRegion: EyeRegion = { x: 0.3, y: 0.35, width: 0.4, height: 0.2 };
   const eyeRegionRef = useRef<EyeRegion>(defaultRegion);
   const targetRegionRef = useRef<EyeRegion>(defaultRegion);
+  const [faceDetected, setFaceDetected] = useState(false);
+  const noDetectionCountRef = useRef(0);
 
   const initWebGL = useCallback(() => {
     const canvas = canvasRef.current;
@@ -486,12 +488,15 @@ export default function EyeTrackingShader() {
         try {
           const detections = await faceapi
             .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions({
-              inputSize: 416,
-              scoreThreshold: 0.4
+              inputSize: 320,
+              scoreThreshold: 0.25
             }))
             .withFaceLandmarks(true);
 
           if (detections) {
+            noDetectionCountRef.current = 0;
+            setFaceDetected(true);
+
             const landmarks = detections.landmarks;
             const leftEye = landmarks.getLeftEye();
             const rightEye = landmarks.getRightEye();
@@ -505,12 +510,14 @@ export default function EyeTrackingShader() {
             const videoWidth = videoRef.current.videoWidth;
             const videoHeight = videoRef.current.videoHeight;
 
-            // Calculate eye region with tight padding (eyes only, not full face)
-            const padX = (maxX - minX) * 0.3;
-            const padY = (maxY - minY) * 0.5;
+            // Calculate eye region with padding for better framing
+            const eyeWidth = maxX - minX;
+            const eyeHeight = maxY - minY;
+            const padX = eyeWidth * 0.5;
+            const padY = eyeHeight * 0.8;
 
-            const regionWidth = (maxX - minX + padX * 2) / videoWidth;
-            const regionHeight = (maxY - minY + padY * 2) / videoHeight;
+            const regionWidth = (eyeWidth + padX * 2) / videoWidth;
+            const regionHeight = (eyeHeight + padY * 2) / videoHeight;
             const regionX = (minX - padX) / videoWidth;
             const regionY = (minY - padY) / videoHeight;
 
@@ -518,9 +525,14 @@ export default function EyeTrackingShader() {
             targetRegionRef.current = {
               x: Math.max(0, Math.min(1 - regionWidth, regionX)),
               y: Math.max(0, Math.min(1 - regionHeight, regionY)),
-              width: Math.min(1, regionWidth),
-              height: Math.min(1, regionHeight),
+              width: Math.min(1, Math.max(0.1, regionWidth)),
+              height: Math.min(1, Math.max(0.05, regionHeight)),
             };
+          } else {
+            noDetectionCountRef.current++;
+            if (noDetectionCountRef.current > 30) {
+              setFaceDetected(false);
+            }
           }
         } catch (err) {
           console.error("Detection error:", err);
@@ -736,8 +748,15 @@ export default function EyeTrackingShader() {
 
       {/* Loading */}
       {isLoading && (
-        <div className="absolute top-4 right-4 text-white/40 text-[10px] tracking-wider animate-pulse ">
-          detecting...
+        <div className="absolute top-4 right-4 text-white/40 text-[10px] tracking-wider animate-pulse">
+          loading models...
+        </div>
+      )}
+
+      {/* No face detected warning */}
+      {cameraActive && !isLoading && !faceDetected && (
+        <div className="absolute top-4 right-4 text-yellow-400/70 text-[10px] tracking-wider">
+          no face detected - look at camera
         </div>
       )}
     </div>

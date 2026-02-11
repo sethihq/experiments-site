@@ -2,72 +2,16 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Suspense, lazy, useState } from "react";
+import { useState } from "react";
 import type { Experiment } from "@/lib/experiments";
 import { useSound } from "@/hooks/useSound";
-
-// Lazy load preview components
-const GlitchPreview = lazy(() =>
-  import("./shader-previews").then((m) => ({ default: m.GlitchPreview }))
-);
-const AsciiPreview = lazy(() =>
-  import("./shader-previews").then((m) => ({ default: m.AsciiPreview }))
-);
-const EyeTrackingPreview = lazy(() =>
-  import("./shader-previews").then((m) => ({ default: m.EyeTrackingPreview }))
-);
-const DigitalTwinPreview = lazy(() =>
-  import("./shader-previews").then((m) => ({ default: m.DigitalTwinPreview }))
-);
-const GestureMasksPreview = lazy(() =>
-  import("./shader-previews").then((m) => ({ default: m.GestureMasksPreview }))
-);
-const PortalPreview = lazy(() =>
-  import("./shader-previews").then((m) => ({ default: m.PortalPreview }))
-);
-const PolaroidPreview = lazy(() =>
-  import("./shader-previews").then((m) => ({ default: m.PolaroidPreview }))
-);
 
 interface GalleryCardProps {
   experiment: Experiment;
 }
 
-// Loading placeholder
-function PreviewSkeleton({ color }: { color?: string }) {
-  return (
-    <div
-      className="absolute inset-0 animate-pulse"
-      style={{ backgroundColor: color || "var(--muted)" }}
-    />
-  );
-}
-
-// Get preview component by experiment number
-function getPreviewComponent(num: number) {
-  switch (num) {
-    case 1:
-      return GlitchPreview;
-    case 2:
-      return AsciiPreview;
-    case 3:
-      return EyeTrackingPreview;
-    case 4:
-      return DigitalTwinPreview;
-    case 5:
-      return GestureMasksPreview;
-    case 6:
-      return PortalPreview;
-    case 7:
-      return PolaroidPreview;
-    default:
-      return null;
-  }
-}
-
 export function GalleryCard({ experiment }: GalleryCardProps) {
   const [isHovered, setIsHovered] = useState(false);
-  const PreviewComponent = getPreviewComponent(experiment.number);
   const { playHover, playClick } = useSound();
 
   return (
@@ -87,28 +31,17 @@ export function GalleryCard({ experiment }: GalleryCardProps) {
         whileHover={{ scale: 1.02 }}
         transition={{ type: "spring", stiffness: 400, damping: 25 }}
       >
-        {/* Shader Preview or Fallback */}
-        {PreviewComponent ? (
-          <Suspense fallback={<PreviewSkeleton color={experiment.previewColor} />}>
-            <div className="absolute inset-0">
-              <PreviewComponent />
-            </div>
-          </Suspense>
-        ) : (
-          <>
-            {/* Fallback background */}
-            <div
-              className="absolute inset-0 transition-transform duration-500 group-hover:scale-105"
-              style={{ backgroundColor: experiment.previewColor || "var(--muted)" }}
-            />
-            {/* Experiment number watermark */}
-            <div className="absolute inset-0 flex items-center justify-center">
-              <span className="text-[var(--fg-04)] font-mono text-8xl font-bold select-none transition-all duration-300 group-hover:text-[var(--fg-06)] group-hover:scale-105">
-                {experiment.number.toString().padStart(2, "0")}
-              </span>
-            </div>
-          </>
-        )}
+        {/* Static background */}
+        <div
+          className="absolute inset-0 transition-transform duration-500 group-hover:scale-105"
+          style={{ backgroundColor: experiment.previewColor || "var(--muted)" }}
+        />
+        {/* Experiment number watermark */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className="text-[var(--fg-04)] font-mono text-8xl font-bold select-none transition-all duration-300 group-hover:text-[var(--fg-06)] group-hover:scale-105">
+            {experiment.number.toString().padStart(2, "0")}
+          </span>
+        </div>
 
         {/* Hover overlay */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />

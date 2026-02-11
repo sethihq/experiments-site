@@ -198,6 +198,8 @@ export default function PolaroidSnip() {
   const handPositionsRef = useRef<HandLandmark[]>([]);
   const isPinchingRef = useRef(false);
   const pinchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const [hasHand, setHasHand] = useState(false);
+  const [isPinching, setIsPinching] = useState(false);
 
   // Enhanced tracking for accuracy
   const smoothedPositionRef = useRef<SmoothedPosition>({ x: 0.5, y: 0.5, history: [] });
@@ -391,6 +393,7 @@ export default function PolaroidSnip() {
         if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
           const landmarks = results.multiHandLandmarks[0];
           handPositionsRef.current = landmarks;
+          setHasHand(true);
 
           // Get key landmarks for pinch detection
           const thumbTip = landmarks[4];
@@ -453,6 +456,7 @@ export default function PolaroidSnip() {
           if (pinchConfirmCountRef.current >= PINCH_CONFIRM_FRAMES && !isPinchingRef.current) {
             // Confirmed pinch start
             isPinchingRef.current = true;
+            setIsPinching(true);
             pinchConfirmCountRef.current = 0;
             pinchStartRef.current = { x: pinchX, y: pinchY };
             // Reset position history for fresh start
@@ -473,6 +477,7 @@ export default function PolaroidSnip() {
           } else if (unpinchConfirmCountRef.current >= PINCH_CONFIRM_FRAMES && isPinchingRef.current) {
             // Confirmed pinch end - capture if selection is big enough
             isPinchingRef.current = false;
+            setIsPinching(false);
             unpinchConfirmCountRef.current = 0;
             const width = Math.abs(selectionRef.current.endX - selectionRef.current.startX);
             const height = Math.abs(selectionRef.current.endY - selectionRef.current.startY);
@@ -488,10 +493,12 @@ export default function PolaroidSnip() {
           }
         } else {
           // No hand detected - cancel selection after confirmation
+          setHasHand(false);
           if (isPinchingRef.current) {
             unpinchConfirmCountRef.current++;
             if (unpinchConfirmCountRef.current >= PINCH_CONFIRM_FRAMES * 2) {
               isPinchingRef.current = false;
+              setIsPinching(false);
               unpinchConfirmCountRef.current = 0;
               selectionRef.current.active = false;
               setSelection(null);
@@ -798,7 +805,7 @@ export default function PolaroidSnip() {
       )}
 
       {/* Pinch indicator - uses smoothed position for stability */}
-      {cameraActive && handPositionsRef.current.length > 0 && (
+      {cameraActive && hasHand && (
         <div
           className="absolute pointer-events-none z-10"
           style={{
@@ -811,15 +818,15 @@ export default function PolaroidSnip() {
           <div
             className="w-6 h-6 rounded-full border-2 transition-all duration-100"
             style={{
-              borderColor: isPinchingRef.current ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.4)",
-              backgroundColor: isPinchingRef.current ? "rgba(255,255,255,0.2)" : "transparent",
-              transform: isPinchingRef.current ? "scale(0.8)" : "scale(1)",
+              borderColor: isPinching ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.4)",
+              backgroundColor: isPinching ? "rgba(255,255,255,0.2)" : "transparent",
+              transform: isPinching ? "scale(0.8)" : "scale(1)",
             }}
           />
           {/* Center dot */}
           <div
             className="absolute top-1/2 left-1/2 w-1.5 h-1.5 rounded-full bg-white/80 -translate-x-1/2 -translate-y-1/2 transition-opacity duration-100"
-            style={{ opacity: isPinchingRef.current ? 1 : 0.5 }}
+            style={{ opacity: isPinching ? 1 : 0.5 }}
           />
         </div>
       )}
