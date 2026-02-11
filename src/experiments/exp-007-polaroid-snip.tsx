@@ -26,12 +26,12 @@ interface Polaroid {
   developing: boolean;
 }
 
-// Smoothing configuration for high accuracy
-const SMOOTHING_FACTOR = 0.3; // Lower = smoother but more latency
-const PINCH_START_THRESHOLD = 0.035; // Tighter threshold to start pinch
-const PINCH_END_THRESHOLD = 0.06; // Larger threshold to end pinch (hysteresis)
-const PINCH_CONFIRM_FRAMES = 3; // Frames to confirm pinch state change
-const POSITION_HISTORY_SIZE = 5; // Frames for position averaging
+// Smoothing configuration - balanced for responsiveness
+const SMOOTHING_FACTOR = 0.6; // Higher = more responsive
+const PINCH_START_THRESHOLD = 0.045; // Slightly more lenient to start pinch
+const PINCH_END_THRESHOLD = 0.07; // Larger threshold to end pinch (hysteresis)
+const PINCH_CONFIRM_FRAMES = 2; // Fewer frames for faster response
+const POSITION_HISTORY_SIZE = 3; // Shorter history for responsiveness
 
 interface SmoothedPosition {
   x: number;
@@ -200,6 +200,7 @@ export default function PolaroidSnip() {
   const pinchStartRef = useRef<{ x: number; y: number } | null>(null);
   const [hasHand, setHasHand] = useState(false);
   const [isPinching, setIsPinching] = useState(false);
+  const [indicatorPos, setIndicatorPos] = useState({ x: 0.5, y: 0.5 });
 
   // Enhanced tracking for accuracy
   const smoothedPositionRef = useRef<SmoothedPosition>({ x: 0.5, y: 0.5, history: [] });
@@ -385,8 +386,8 @@ export default function PolaroidSnip() {
       hands.setOptions({
         maxNumHands: 1,
         modelComplexity: 1, // Highest accuracy model
-        minDetectionConfidence: 0.8, // Higher confidence for more reliable detection
-        minTrackingConfidence: 0.8, // Higher tracking confidence
+        minDetectionConfidence: 0.6, // Lower threshold for better tracking
+        minTrackingConfidence: 0.5, // Lower threshold to maintain tracking
       });
 
       hands.onResults((results: any) => {
@@ -451,6 +452,9 @@ export default function PolaroidSnip() {
           smoothedPositionRef.current = smoothPosition(smoothedPositionRef.current, rawPinchX, rawPinchY);
           const pinchX = smoothedPositionRef.current.x;
           const pinchY = smoothedPositionRef.current.y;
+
+          // Update indicator position state for re-render
+          setIndicatorPos({ x: pinchX, y: pinchY });
 
           // State transitions with confirmation
           if (pinchConfirmCountRef.current >= PINCH_CONFIRM_FRAMES && !isPinchingRef.current) {
@@ -804,13 +808,13 @@ export default function PolaroidSnip() {
         </div>
       )}
 
-      {/* Pinch indicator - uses smoothed position for stability */}
+      {/* Pinch indicator - uses state for smooth updates */}
       {cameraActive && hasHand && (
         <div
-          className="absolute pointer-events-none z-10"
+          className="absolute pointer-events-none z-10 transition-all duration-75"
           style={{
-            left: `${smoothedPositionRef.current.x * 100}%`,
-            top: `${smoothedPositionRef.current.y * 100}%`,
+            left: `${indicatorPos.x * 100}%`,
+            top: `${indicatorPos.y * 100}%`,
             transform: "translate(-50%, -50%)",
           }}
         >
